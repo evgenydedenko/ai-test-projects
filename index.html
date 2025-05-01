@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Распознавание лица</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+        }
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+        }
+        .container {
+            position: relative;
+            margin: 20px;
+        }
+        #output_canvas {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #e8f0fe;
+            border-radius: 5px;
+            color: #1967d2;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h1>Распознавание лица</h1>
+    <div class="container">
+        <canvas id="output_canvas"></canvas>
+    </div>
+    <div id="status">Загрузка моделей...</div>
+    <div class="controls">
+        <button id="startButton" disabled>Начать</button>
+    </div>
+
+    <!-- Load face-api.js -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+    <script>
+
+        const emotionTranslation = {
+            'angry': 'злой',
+            'disgusted': 'брезгливый',
+            'fearful': 'испуганный',
+            'happy': 'счастливый',
+            'neutral': 'нейтральный',
+            'sad': 'грустный',
+            'surprised': 'удивленный'
+        };
+
+        const genderTranslation = {
+            'male': 'мужчина',
+            'female': 'женщина'
+        };
+
+        const videoElement = document.createElement('video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const statusElement = document.getElementById('status');
+
+        // Set fixed dimensions for video and canvas
+        const WIDTH = 640;
+        const HEIGHT = 480;
+        canvasElement.width = WIDTH;
+        canvasElement.height = HEIGHT;
+
+        async function loadModels() {
+            try {
+                statusElement.textContent = 'Загрузка моделей для распознавания лица...';
+                
+                // Load all required face-api.js models
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'),
+                    faceapi.nets.ageGenderNet.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'),
+                    faceapi.nets.faceExpressionNet.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights')
+                ]);
+
+                startButton.disabled = false;
+                statusElement.textContent = 'Модели загружены. Нажмите "Начать" для начала.';
+            } catch (error) {
+                console.error('Ошибка загрузки моделей:', error);
+                statusElement.textContent = 'Ошибка загрузки моделей: ' + error.message;
+            }
+        }
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    'video': { width: WIDTH, height: HEIGHT },
+                    'audio': false
+                });
+                videoElement.srcObject = stream;
+                
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        videoElement.play();
+                        resolve(videoElement);
+                    };
+                });
+            } catch (error) {
+                statusElement.textContent = 'Ошибка доступа к камере: ' + error.message;
+                throw error;
+            }
+        }
+
+        async function detectFaces() {
+            try {
+                // Get detections with age and gender
+                const detections = await faceapi.detectAllFaces(videoElement, 
+                    new faceapi.TinyFaceDetectorOptions())
+                    .withAgeAndGender()
+                    .withFaceExpressions();
+
+                // Clear the canvas and draw video frame
+                canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+                canvasCtx.drawImage(videoElement, 0, 0, WIDTH, HEIGHT);
+
+                if (detections.length > 0) {
+                    detections.forEach(detection => {
+                        const box = detection.detection.box;
+                        const age = Math.round(detection.age);
+                        const gender = detection.gender;
+                        const expressions = detection.expressions;
+                        const dominantExpression = Object.entries(expressions)
+                            .reduce((a, b) => a[1] > b[1] ? a : b)[0];
+
+                        console.log(detection);
+
+                        // Save canvas state
+                        canvasCtx.save();
+
+                        // Draw semi-transparent background for the box
+                        canvasCtx.fillStyle = 'rgba(26, 115, 232, 0.1)';
+                        canvasCtx.fillRect(box.x, box.y, box.width, box.height);
+
+                        // Draw box border
+                        canvasCtx.strokeStyle = '#1a73e8';
+                        canvasCtx.lineWidth = 2;
+                        canvasCtx.strokeRect(box.x, box.y, box.width, box.height);
+
+                        // Prepare text to display
+                        const texts = [
+                            `Возраст: ${age} лет`,
+                            `Пол: ${genderTranslation[gender]}`,
+                            `Настроение: ${emotionTranslation[dominantExpression]}`
+                        ];
+
+                        // Draw text background and text
+                        canvasCtx.font = '16px Arial';
+                        const padding = 4;
+                        const lineHeight = 20;
+                        
+                        texts.forEach((text, index) => {
+                            const textMetrics = canvasCtx.measureText(text);
+                            const textY = box.y - (texts.length - index) * lineHeight;
+
+                            // Draw text background
+                            canvasCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                            canvasCtx.fillRect(
+                                box.x,
+                                textY - 16,
+                                textMetrics.width + padding * 2,
+                                20
+                            );
+
+                            // Draw text
+                            canvasCtx.fillStyle = '#1a73e8';
+                            canvasCtx.fillText(text, box.x + padding, textY);
+                        });
+
+                        // Restore canvas state
+                        canvasCtx.restore();
+                    });
+
+                    statusElement.textContent = `Распознано ${detections.length} лицо${detections.length > 1 ? 'а' : ''}`;
+                } else {
+                    statusElement.textContent = 'Лиц не распознано';
+                }
+
+                // Continue detection if camera is running
+                if (videoElement.srcObject) {
+                    requestAnimationFrame(detectFaces);
+                }
+            } catch (error) {
+                console.error('Detection error:', error);
+                statusElement.textContent = 'Ошибка распознавания: ' + error.message;
+            }
+        }
+
+        startButton.addEventListener('click', async () => {
+            if (videoElement.srcObject) {
+                // Stop the camera
+                const tracks = videoElement.srcObject.getTracks();
+                tracks.forEach(track => track.stop());
+                videoElement.srcObject = null;
+                startButton.textContent = 'Начать';
+                statusElement.textContent = 'Камера остановлена';
+            } else {
+                // Start the camera
+                try {
+                    await setupCamera();
+                    startButton.textContent = 'Остановить';
+                    detectFaces();
+                } catch (error) {
+                    console.error('Ошибка запуска камеры:', error);
+                    statusElement.textContent = 'Ошибка запуска камеры: ' + error.message;
+                }
+            }
+        });
+
+        // Initialize by loading models
+        loadModels();
+    </script>
+</body>
+</html>
