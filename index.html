@@ -84,6 +84,21 @@
             'female': 'женщина'
         };
 
+        function calculateWidth() {
+            return window.innerWidth < 640 ? window.innerWidth - 10 : 640;
+        }
+
+        function calculateHeight(width) {
+            const originalWidth = 640;
+            const originalHeight = 480;
+
+            if (width < originalWidth) {
+                return ((width / originalWidth) * originalHeight) + 100;
+            } else {
+                return originalHeight; // Keep the original height if width is 640 or more
+            }
+        }
+
         const videoElement = document.createElement('video');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
@@ -91,8 +106,8 @@
         const statusElement = document.getElementById('status');
 
         // Set fixed dimensions for video and canvas
-        const WIDTH = 640;
-        const HEIGHT = 480;
+        const WIDTH = calculateWidth();
+        const HEIGHT = calculateHeight(WIDTH);
         canvasElement.width = WIDTH;
         canvasElement.height = HEIGHT;
 
